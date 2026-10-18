@@ -24,6 +24,10 @@ jobs:
           python-version: "3.12"
       - name: Install colab cli
         run: pip install google-colab-cli==0.6.0 requests "jupyter_kernel_client==1.0.2"
+      - name: Debug jupyter_kernel_client
+        run: |
+          python -c "import importlib.metadata as md; print('dist ver:', md.version('jupyter-kernel-client'))"
+          python -c "import jupyter_kernel_client as m; print('file:', m.__file__); print('names:', [n for n in dir(m) if not n.startswith('_')])"
       - name: Run watchdog
         env:
           COLAB_TOKEN_4B_B64: ${{ secrets.COLAB_TOKEN_4B_B64 }}

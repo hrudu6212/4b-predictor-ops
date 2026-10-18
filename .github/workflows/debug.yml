@@ -1,6 +1,9 @@
 name: 4b-debug
 
 on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/debug.yml"]
   workflow_dispatch:
 
 jobs:

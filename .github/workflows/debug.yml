@@ -23,11 +23,10 @@ jobs:
           import shutil, site
           from pathlib import Path
           pkg = Path(site.getsitepackages()[0]) / "colab_cli"
-          pkg.mkdir(exist_ok=True)
-          src = Path.cwd() / "vendor" / "colab_cli"
-          shutil.copy(src / "auth.py", pkg / "auth.py")
-          shutil.copy(src / "commands" / "automation.py", pkg / "commands" / "automation.py")
-          print("patched", flush=True)
+          if pkg.exists():
+              shutil.rmtree(pkg)
+          shutil.copytree(Path.cwd() / "vendor" / "colab_cli", pkg)
+          print("vendored", flush=True)
           EOF
       - name: Prepare config
         run: |

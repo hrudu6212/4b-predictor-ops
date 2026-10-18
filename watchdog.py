@@ -60,11 +60,9 @@ def prepare_files():
                            "import site; print(site.getsitepackages()[0])"],
                           capture_output=True, text=True).stdout.strip()
     pkg = Path(root) / "colab_cli"
-    pkg.mkdir(exist_ok=True)
-    (pkg / "auth.py").write_text((HERE / "vendor" / "colab_cli" / "auth.py").read_text())
-    (pkg / "commands").mkdir(exist_ok=True)
-    (pkg / "commands" / "automation.py").write_text(
-        (HERE / "vendor" / "colab_cli" / "commands" / "automation.py").read_text())
+    if pkg.exists():
+        shutil.rmtree(pkg)
+    shutil.copytree(HERE / "vendor" / "colab_cli", pkg)
 
 
 def reconnect(force=False, healthy_first=True):

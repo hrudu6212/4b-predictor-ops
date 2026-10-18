@@ -43,11 +43,16 @@ def public_ok():
 
 
 def prepare_files():
+    import json as _json
     CONFIG.mkdir(parents=True, exist_ok=True)
-    (CONFIG / "token-4b.json").write_bytes(
-        base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
-    os.environ["COLAB_CLI_TOKEN_FILE"] = str(CONFIG / "token-4b.json")
-    SESSIONS.write_bytes(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]))
+    token_path = CONFIG / "token-4b.json"
+    token_path.write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
+    os.environ["COLAB_CLI_TOKEN_FILE"] = str(token_path)
+    data = _json.loads(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]).decode())
+    for info in data.values():
+        if isinstance(info, dict) and info.get("token_file"):
+            info["token_file"] = str(token_path)
+    SESSIONS.write_text(_json.dumps(data))
     (HERE / ".env.4b").write_bytes(base64.b64decode(os.environ["PREDICTION_ENV_4B_B64"]))
     (HERE / "ngrok_4b_token.txt").write_text(os.environ["NGROK_TOKEN_4B"].strip())
     HERE.joinpath("ngrok_4b_domain.txt").write_text("portfolio-debate-olive.ngrok-free.dev")

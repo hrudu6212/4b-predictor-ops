@@ -25,12 +25,20 @@ jobs:
           ws = Path(os.environ["GITHUB_WORKSPACE"])
           cfg = Path.home() / ".config" / "colab-cli"
           cfg.mkdir(parents=True, exist_ok=True)
-          (cfg / "token-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
-          (ws / "sessions-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]))
+          token_path = cfg / "token-4b.json"
+          token_path.write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
+          sessions = ws / "sessions-4b.json"
+          data = __import__("json").loads(
+              base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]).decode())
+          for info in data.values():
+              if isinstance(info, dict):
+                  if info.get("token_file"):
+                      info["token_file"] = str(token_path)
+          sessions.write_text(__import__("json").dumps(data))
           d = ws / "tmp_build"
           d.mkdir(exist_ok=True)
           (d / "ping.py").write_text("print('PING_OK')\n")
-          print("prepared", flush=True)
+          print("prepared; token_file ->", str(token_path), flush=True)
           EOF
         env:
           COLAB_TOKEN_4B_B64: ${{ secrets.COLAB_TOKEN_4B_B64 }}

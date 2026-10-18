@@ -20,18 +20,18 @@ jobs:
       - name: Prepare config
         run: |
           python - <<'EOF'
-import base64, os
-from pathlib import Path
-ws = Path(os.environ["GITHUB_WORKSPACE"])
-cfg = Path.home() / ".config" / "colab-cli"
-cfg.mkdir(parents=True, exist_ok=True)
-(cfg / "token-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
-(ws / "sessions-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]))
-d = ws / "tmp_build"
-d.mkdir(exist_ok=True)
-(d / "ping.py").write_text("print('PING_OK')\n")
-print("prepared", flush=True)
-EOF
+          import base64, os
+          from pathlib import Path
+          ws = Path(os.environ["GITHUB_WORKSPACE"])
+          cfg = Path.home() / ".config" / "colab-cli"
+          cfg.mkdir(parents=True, exist_ok=True)
+          (cfg / "token-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
+          (ws / "sessions-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]))
+          d = ws / "tmp_build"
+          d.mkdir(exist_ok=True)
+          (d / "ping.py").write_text("print('PING_OK')\n")
+          print("prepared", flush=True)
+          EOF
         env:
           COLAB_TOKEN_4B_B64: ${{ secrets.COLAB_TOKEN_4B_B64 }}
           COLAB_SESSIONS_4B_B64: ${{ secrets.COLAB_SESSIONS_4B_B64 }}

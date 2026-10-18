@@ -80,6 +80,10 @@ def reconnect(force=False, healthy_first=True):
     if not made:
         print("WATCHDOG: GPU unavailable, giving up this run", flush=True)
         return 2
+    for f in ["mkdir_cpu.py"]:
+        rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / f),
+                            "--timeout", "300", timeout=600)
+        print("exec", f, "->", out.strip().splitlines()[-1:], flush=True)
     for fn, remote in [
         ("serve_4b_predictor.py", "/tmp/4b_work/serve_4b_predictor.py"),
         ("start_4b_tunnel.py", "/tmp/4b_work/start_4b_tunnel.py"),
@@ -87,9 +91,16 @@ def reconnect(force=False, healthy_first=True):
         (".env.4b", "/tmp/4b_work/.env.4b"),
         ("best_4b_chart_model.pt", "/tmp/4b_data/out/best_4b_chart_model.pt"),
     ]:
-        rc, out = colab_out("upload", str(HERE / fn), remote, timeout=900)
-        print("upload", fn, "->", out.strip().splitlines()[-1:], flush=True)
-    for f in ["mkdir_cpu.py", "write_domain.py", "serve_setup_b.py"]:
+        ok = False
+        for tryup in range(3):
+            rc, out = colab_out("upload", str(HERE / fn), remote, timeout=900)
+            if "Uploaded" in out:
+                ok = True
+                break
+            print("upload", fn, f"attempt {tryup} failed:", out.strip()[-200:], flush=True)
+            time.sleep(5)
+        print("upload", fn, "->", "OK" if ok else "FAILED", flush=True)
+    for f in ["write_domain.py", "serve_setup_b.py"]:
         colab_out("exec", "-s", "4bgpu", "-f", str(HERE / f), "--timeout", "300", timeout=600)
     rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / "serve_setup_b.py"),
                         "--timeout", "900", timeout=1500)

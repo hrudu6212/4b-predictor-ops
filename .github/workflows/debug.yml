@@ -1,0 +1,47 @@
+name: 4b-debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install colab cli
+        run: pip install google-colab-cli==0.6.0 requests "jupyter_kernel_client==1.0.2"
+      - name: Prepare config
+        run: python - <<'EOF'
+import base64, os
+from pathlib import Path
+ws = Path(os.environ["GITHUB_WORKSPACE"])
+cfg = Path.home() / ".config" / "colab-cli"
+cfg.mkdir(parents=True, exist_ok=True)
+(cfg / "token-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_TOKEN_4B_B64"]))
+(ws / "sessions-4b.json").write_bytes(base64.b64decode(os.environ["COLAB_SESSIONS_4B_B64"]))
+d = ws / "tmp_build"
+d.mkdir(exist_ok=True)
+(d / "ping.py").write_text("print('PING_OK')\n")
+print("prepared", flush=True)
+EOF
+        env:
+          COLAB_TOKEN_4B_B64: ${{ secrets.COLAB_TOKEN_4B_B64 }}
+          COLAB_SESSIONS_4B_B64: ${{ secrets.COLAB_SESSIONS_4B_B64 }}
+      - name: New session 4bdbg (CPU)
+        run: |
+          export COLAB_CLI_TOKEN_FILE="$HOME/.config/colab-cli/token-4b.json"
+          colab --config "$GITHUB_WORKSPACE/sessions-4b.json" new -s 4bdbg 2>&1 | tail -5
+      - name: Exec ping (full output)
+        run: |
+          export COLAB_CLI_TOKEN_FILE="$HOME/.config/colab-cli/token-4b.json"
+          colab --config "$GITHUB_WORKSPACE/sessions-4b.json" exec -s 4bdbg -f "$GITHUB_WORKSPACE/tmp_build/ping.py" --timeout 120 2>&1 || true
+      - name: Upload probe (full output)
+        run: |
+          export COLAB_CLI_TOKEN_FILE="$HOME/.config/colab-cli/token-4b.json"
+          colab --config "$GITHUB_WORKSPACE/sessions-4b.json" upload "$GITHUB_WORKSPACE/tmp_build/ping.py" /tmp/dbg/ping.py 2>&1 || true
+      - name: pip list relevant
+        run: pip list | grep -Ei "colab|jupyter|nbformat|typer|rich|pydantic|requests|click|filelock|websocket" || true

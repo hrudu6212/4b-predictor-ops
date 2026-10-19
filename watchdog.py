@@ -66,6 +66,18 @@ def prepare_files():
     shutil.copytree(HERE / "vendor" / "colab_cli", pkg)
 
 
+def session_endpoint(name="4bgpu"):
+    import json as _json
+    try:
+        data = _json.loads(SESSIONS.read_text())
+    except Exception:
+        return ""
+    for key, info in data.items():
+        if isinstance(info, dict) and (key == name or info.get("name") == name):
+            return info.get("endpoint", "")
+    return ""
+
+
 def reconnect(force=False, healthy_first=True):
     if healthy_first and not force and public_ok():
         print("WATCHDOG: tunnel healthy, nothing to do", flush=True)
@@ -88,16 +100,26 @@ def reconnect(force=False, healthy_first=True):
         rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / f),
                             "--timeout", "300", timeout=600)
         print("exec", f, "->", out.strip().splitlines()[-1:], flush=True)
+    endpoint = session_endpoint()
+    print("endpoint:", endpoint or "MISSING", flush=True)
+    (HERE / "keepalive_ep.txt").write_text(endpoint)
+    token_local = CONFIG / "token-4b.json"
     for fn, remote in [
         ("serve_4b_predictor.py", "/tmp/4b_work/serve_4b_predictor.py"),
         ("start_4b_tunnel.py", "/tmp/4b_work/start_4b_tunnel.py"),
+        ("vm_keepalive.py", "/tmp/4b_work/vm_keepalive.py"),
         ("ngrok_4b_token.txt", "/tmp/4b_work/ngrok_4b_token.txt"),
         (".env.4b", "/tmp/4b_work/.env.4b"),
+        ("keepalive_ep.txt", "/tmp/4b_data/keepalive_ep.txt"),
+        (str(token_local), "/tmp/4b_data/token-4b.json"),
         ("best_4b_chart_model.pt", "/tmp/4b_data/out/best_4b_chart_model.pt"),
     ]:
         ok = False
         for tryup in range(3):
-            rc, out = colab_out("upload", str(HERE / fn), remote, timeout=900)
+            src = Path(fn)
+            if not src.is_absolute():
+                src = HERE / fn
+            rc, out = colab_out("upload", str(src), remote, timeout=900)
             if "Uploaded" in out:
                 ok = True
                 break

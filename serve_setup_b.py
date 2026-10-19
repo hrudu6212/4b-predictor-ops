@@ -11,6 +11,17 @@ subprocess.Popen(["nohup", "python", "/tmp/4b_work/start_4b_tunnel.py"],
                  stdin=subprocess.DEVNULL, start_new_session=True)
 print("launcher detached", flush=True)
 
+# Keep this VM alive past Colab's idle disconnect (runs inside the VM).
+try:
+    kl_log = open("/tmp/4b_data/keepalive_stdout.log", "a")
+    subprocess.Popen(["nohup", "python", "/tmp/4b_work/vm_keepalive.py"],
+                     cwd="/tmp/4b_work", env=env,
+                     stdout=kl_log, stderr=subprocess.STDOUT,
+                     stdin=subprocess.DEVNULL, start_new_session=True)
+    print("keepalive detached", flush=True)
+except Exception as exc:
+    print("keepalive launch failed:", exc, flush=True)
+
 ok = False
 for _ in range(90):
     try:

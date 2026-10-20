@@ -156,96 +156,82 @@ def main() -> None:
         return
 
     # --- ngrok tunnel on the reserved domain --------------------------------
-    try:
-        from pyngrok import conf, ngrok
-    except ImportError:
-        print("[4b] installing pyngrok ...", flush=True)
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyngrok"], check=True)
-        from pyngrok import conf, ngrok  # type: ignore
+    # Drive the agent binary directly: the current stable agent uses the new
+    # "endpoints/--url" schema, which pyngrok's local-API call (domain=/hostname=)
+    # rejects with "invalid endpoint configuration".
+    import json
 
-    # Prefer a pre-uploaded binary (avoids slow/flaky in-VM downloads).
     ngrok_bin = os.environ.get("NGROK_BIN", "/tmp/4b_work/ngrok")
-    cfg = conf.PyngrokConfig(ngrok_path=ngrok_bin) if os.path.exists(ngrok_bin) else None
-    print(f"[4b] ngrok binary: {ngrok_bin} (exists={cfg is not None})", flush=True)
+    if not os.path.exists(ngrok_bin):
+        try:
+            print("[4b] ngrok binary missing; downloading ...", flush=True)
+            from pyngrok import installer
+            installer.install_ngrok(ngrok_bin)
+        except Exception as exc:
+            sys.exit(f"[4b] ngrok binary missing and download failed: {exc}")
+    try:
+        os.chmod(ngrok_bin, 0o755)
+    except OSError:
+        pass
+    print(f"[4b] ngrok binary: {ngrok_bin}", flush=True)
 
-    def _set_token():
-        if cfg is not None:
-            ngrok.set_auth_token(token, pyngrok_config=cfg)
-        else:
-            ngrok.set_auth_token(token)
+    api = "http://127.0.0.1:4040/api/tunnels"
+    agent: dict = {"proc": None}
 
     def _kill():
-        try:
-            if cfg is not None:
-                ngrok.kill(pyngrok_config=cfg)
-            else:
-                ngrok.kill()
-        except Exception:
-            pass
-
-    _set_token()
-    _kill()
+        p = agent.get("proc")
+        if p is not None and p.poll() is None:
+            try:
+                p.terminate()
+                p.wait(timeout=10)
+            except Exception:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+        agent["proc"] = None
 
     def open_tunnel():
-        kw = {"pyngrok_config": cfg} if cfg is not None else {}
-        if not domain:
-            return ngrok.connect(port, proto="http", **kw)
-        last = None
-        for key in ("domain", "hostname"):
+        _kill()
+        subprocess.run(f"pkill -f '{ngrok_bin}'", shell=True, capture_output=True)
+        time.sleep(2)
+        cmd = [ngrok_bin, "http", str(port), "--authtoken", token, "--log=stdout"]
+        if domain:
+            cmd += ["--url", f"https://{domain}"]
+        print(f"[4b] launching ngrok agent (url={domain or 'auto'})", flush=True)
+        env2 = dict(os.environ, NGROK_AUTHTOKEN=token)
+        agent["proc"] = subprocess.Popen(cmd, stdout=sys.stdout, stderr=subprocess.STDOUT,
+                                         stdin=subprocess.DEVNULL, env=env2)
+        for _ in range(60):
+            if agent["proc"].poll() is not None:
+                raise RuntimeError(f"ngrok agent exited (code {agent['proc'].returncode})")
             try:
-                return ngrok.connect(port, proto="http", **{key: domain}, **kw)
-            except Exception as exc:
-                last = exc
-                m = str(exc)
-                if "field domain not found" in m or "invalid endpoint configuration" in m:
-                    print(f"[4b] '{key}' rejected by agent; retrying with other key", flush=True)
-                    continue
-                raise
-        raise last
+                data = json.loads(urllib.request.urlopen(api, timeout=3).read().decode())
+                for t in data.get("tunnels", []):
+                    url = t.get("public_url", "")
+                    if url.startswith("https"):
+                        return url
+            except Exception:
+                pass
+            time.sleep(1)
+        raise RuntimeError("ngrok agent did not publish a tunnel within 60s")
 
     try:
         tunnel = None
         last_exc = None
-        for attempt in range(6):
+        for attempt in range(4):
             try:
                 tunnel = open_tunnel()
                 break
             except Exception as exc:
                 last_exc = exc
-                msg = str(exc)
-                print(f"[4b] tunnel open attempt {attempt} failed: {msg[:200]}", flush=True)
-                if "already online" in msg or "ERR_NGROK_334" in msg:
-                    _kill()
-                    time.sleep(15)
-                    continue
-                raise
+                print(f"[4b] tunnel attempt {attempt} failed: {str(exc)[:200]}", flush=True)
+                time.sleep(10)
         if tunnel is None:
             raise last_exc
     except Exception as exc:
-        msg = str(exc)
-        if "already online" in msg or "ERR_NGROK_334" in msg:
-            sys.exit(
-                f"[4b] Reserved domain https://{domain} is already online on another "
-                "tunnel (right now it serves your Ollama LLMs on :11434).\n"
-                "Pick one:\n"
-                "  1. Stop the other tunnel using that domain, then re-run.\n"
-                "  2. Reserve a 3rd domain for the 4B predictor "
-                "(dashboard.ngrok.com -> Domains) and put it in ngrok_4b_domain.txt "
-                "or $NGROK_DOMAIN_4B (leaves both LLM tunnels untouched).\n"
-                "Sharing one reserved domain between Ollama and the 4B API is not "
-                "supported (ngrok would load-balance chart uploads to the LLM)."
-            )
-        if "reserved for another account" in msg or "ERR_NGROK_320" in msg:
-            sys.exit(
-                f"[4b] Domain https://{domain} is reserved under a DIFFERENT ngrok "
-                "account than this tunnel's authtoken.\n"
-                "Fix: log in to dashboard.ngrok.com as the account that reserved it, "
-                "copy its authtoken (Get Started -> Your Authtoken), and save it as "
-                "ngrok_4b_token.txt (or $NGROK_AUTHTOKEN_4B), then re-run.\n"
-                "The 4B token is read first, so your LLM tunnels keep using theirs."
-            )
-        raise
-    public = tunnel.public_url.replace("http://", "https://", 1)
+        sys.exit(f"[4b] could not open ngrok tunnel: {exc}")
+    public = tunnel.replace("http://", "https://", 1)
     base_v1 = public.rstrip("/") + "/v1"
 
     print("", flush=True)
@@ -279,9 +265,8 @@ def main() -> None:
             except Exception as exc:
                 print(f"[ngrok] public check failed ({exc}); reconnecting ...", flush=True)
                 try:
-                    _kill()
                     t2 = open_tunnel()
-                    print(f"[ngrok] reconnected: {t2.public_url}", flush=True)
+                    print(f"[ngrok] reconnected: {t2}", flush=True)
                 except Exception as exc2:
                     print(f"[ngrok] reconnect failed: {exc2}", flush=True)
 

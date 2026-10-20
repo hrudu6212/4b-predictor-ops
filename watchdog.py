@@ -131,6 +131,9 @@ def reconnect(force=False, healthy_first=True):
     rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / "serve_setup_b.py"),
                         "--timeout", "900", timeout=1500)
     print("serve exec:", out[-4000:], flush=True)
+    rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / "diag.py"),
+                        "--timeout", "300", timeout=600)
+    print("diag:", out[-4000:], flush=True)
     for _ in range(20):
         try:
             r = urllib.request.urlopen(

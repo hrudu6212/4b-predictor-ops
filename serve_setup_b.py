@@ -37,4 +37,12 @@ try:
     print("local /readyz:", urllib.request.urlopen("http://127.0.0.1:8000/readyz", timeout=10).read().decode()[:250], flush=True)
 except urllib.error.HTTPError as e:
     print("local /readyz:", e.code, e.read().decode()[:250], flush=True)
+
+# Diagnostics: show what the launcher did (ngrok/tunnel status).
+time.sleep(5)
+try:
+    print("SERVE_LOG_TAIL:", open("/tmp/4b_serve.log").read()[-2500:], flush=True)
+except OSError as exc:
+    print("serve log unreadable:", exc, flush=True)
 print("SETUP_B_DONE", flush=True)
+

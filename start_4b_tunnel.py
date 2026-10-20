@@ -175,7 +175,26 @@ def main() -> None:
         return ngrok.connect(port, proto="http")
 
     try:
-        tunnel = open_tunnel()
+        tunnel = None
+        last_exc = None
+        for attempt in range(6):
+            try:
+                tunnel = open_tunnel()
+                break
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                print(f"[4b] tunnel open attempt {attempt} failed: {msg[:200]}", flush=True)
+                if "already online" in msg or "ERR_NGROK_334" in msg:
+                    try:
+                        ngrok.kill()
+                    except Exception:
+                        pass
+                    time.sleep(15)
+                    continue
+                raise
+        if tunnel is None:
+            raise last_exc
     except Exception as exc:
         msg = str(exc)
         if "already online" in msg or "ERR_NGROK_334" in msg:

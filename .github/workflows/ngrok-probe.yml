@@ -1,0 +1,41 @@
+name: ngrok-probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch ngrok binary
+        run: |
+          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -o /tmp/ngrok.tgz
+          tar xzf /tmp/ngrok.tgz -C /tmp
+          chmod +x /tmp/ngrok
+          /tmp/ngrok --version
+      - name: HTTP subcommand help
+        run: /tmp/ngrok http --help 2>&1 | head -60
+      - name: Config schema probe
+        env:
+          NGROK_TOKEN_4B: ${{ secrets.NGROK_TOKEN_4B }}
+        run: |
+          cat > /tmp/ngrok.yml <<EOF
+          version: "3"
+          authtoken: $NGROK_TOKEN_4B
+          tunnels:
+            fourbee:
+              proto: http
+              addr: 8000
+              domain: portfolio-debate-olive.ngrok-free.dev
+          EOF
+          echo "---- config check ----"
+          /tmp/ngrok config check --config /tmp/ngrok.yml 2>&1 | head -30 || true
+          echo "---- start with config ----"
+          timeout 25 /tmp/ngrok start --all --config /tmp/ngrok.yml --log=stdout 2>&1 | head -40 || true
+          echo "---- local api ----"
+          (timeout 25 /tmp/ngrok start --all --config /tmp/ngrok.yml --log=stdout >/tmp/agent.log 2>&1 &) ; sleep 12
+          curl -s http://127.0.0.1:4040/api/tunnels | head -c 800 || true
+          echo
+          echo "---- agent log ----"
+          head -30 /tmp/agent.log || true

@@ -96,10 +96,10 @@ def reconnect(force=False, healthy_first=True):
     if not made:
         print("WATCHDOG: GPU unavailable, giving up this run", flush=True)
         return 2
-    for f in ["mkdir_cpu.py"]:
+    for f in ["mkdir_cpu.py", "deps.py"]:
         rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / f),
-                            "--timeout", "300", timeout=600)
-        print("exec", f, "->", out.strip().splitlines()[-1:], flush=True)
+                            "--timeout", "600", timeout=900)
+        print("exec", f, "->", out.strip()[-300:], flush=True)
     endpoint = session_endpoint()
     print("endpoint:", endpoint or "MISSING", flush=True)
     (HERE / "keepalive_ep.txt").write_text(endpoint)

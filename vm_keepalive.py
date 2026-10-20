@@ -1,13 +1,15 @@
-"""Keep this Colab VM from idle-disconnecting.
+"""Keep this Colab VM alive AND keep the 4B service running.
 
-Runs INSIDE the VM: every 60s it pings Colab's keep-alive endpoint for this
-assignment, which refreshes the idle timer exactly like an open notebook tab.
+Runs INSIDE the VM. Every 60s it:
+  1. pings Colab's keep-alive endpoint for this assignment (prevents idle disconnect)
+  2. checks that start_4b_tunnel.py is alive; if not, relaunches it
+
 Requires (uploaded by the watchdog):
   /tmp/4b_data/token-4b.json      OAuth token for the Colab account
   /tmp/4b_data/keepalive_ep.txt   assignment endpoint id (from sessions json)
 """
-import json
 import os
+import subprocess
 import sys
 import time
 
@@ -18,6 +20,7 @@ from google.oauth2.credentials import Credentials
 TOKEN_PATH = os.environ.get("KEEPALIVE_TOKEN", "/tmp/4b_data/token-4b.json")
 EP_PATH = os.environ.get("KEEPALIVE_EP", "/tmp/4b_data/keepalive_ep.txt")
 LOG_PATH = os.environ.get("KEEPALIVE_LOG", "/tmp/4b_data/keepalive.log")
+LAUNCHER = "/tmp/4b_work/start_4b_tunnel.py"
 SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.profile",
@@ -38,15 +41,29 @@ def log(msg):
         pass
 
 
+def launcher_alive():
+    p = subprocess.run(["pgrep", "-f", LAUNCHER], capture_output=True, text=True)
+    return p.returncode == 0
+
+
+def relaunch():
+    log("launcher not running -> relaunching")
+    subprocess.Popen(
+        f"nohup python {LAUNCHER} >> /tmp/4b_serve.log 2>&1 &",
+        shell=True, cwd="/tmp/4b_work", start_new_session=True)
+
+
 def main():
     endpoint = open(EP_PATH).read().strip()
     creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     sess = requests.Session()
     url = f"https://colab.research.google.com/tun/m/{endpoint}/keep-alive/"
-    log(f"keepalive start endpoint={endpoint}")
+    log(f"supervisor start endpoint={endpoint}")
 
     consecutive_4xx = 0
+    tick = 0
     while True:
+        tick += 1
         try:
             if not creds.valid:
                 creds.refresh(GoogleRequest())
@@ -66,12 +83,19 @@ def main():
                 consecutive_4xx += 1
                 log(f"keepalive http={r.status_code} body={r.text[:200]}")
                 if consecutive_4xx >= 3:
-                    log("keepalive stop: assignment gone (consecutive 4xx)")
+                    log("stop: assignment gone (consecutive 4xx)")
                     sys.exit(0)
             else:
                 consecutive_4xx = 0
         except Exception as exc:
             log(f"keepalive error: {type(exc).__name__}: {exc}")
+
+        if not launcher_alive():
+            try:
+                relaunch()
+            except Exception as exc:
+                log(f"relaunch failed: {exc}")
+
         time.sleep(60)
 
 

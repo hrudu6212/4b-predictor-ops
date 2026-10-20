@@ -10,6 +10,10 @@ import urllib.request
 CKPT = "/tmp/4b_data/out/best_4b_chart_model.pt"
 assert os.path.exists(CKPT), f"checkpoint missing: {CKPT}"
 env = dict(os.environ, MODEL_CHECKPOINT=CKPT)
+if os.path.exists("/tmp/4b_work/ngrok"):
+    os.chmod("/tmp/4b_work/ngrok", 0o755)
+    env["NGROK_BIN"] = "/tmp/4b_work/ngrok"
+    print("using pre-uploaded ngrok binary", flush=True)
 
 if importlib.util.find_spec("pyngrok") is None:
     print("installing pyngrok ...", flush=True)

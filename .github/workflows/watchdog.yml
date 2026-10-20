@@ -28,6 +28,12 @@ jobs:
         run: |
           python -c "import importlib.metadata as md; print('dist ver:', md.version('jupyter-kernel-client'))"
           python -c "import jupyter_kernel_client as m; print('file:', m.__file__); print('names:', [n for n in dir(m) if not n.startswith('_')])"
+      - name: Fetch ngrok binary
+        run: |
+          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -o /tmp/ngrok.tgz
+          tar xzf /tmp/ngrok.tgz -C "$GITHUB_WORKSPACE"
+          chmod +x "$GITHUB_WORKSPACE/ngrok"
+          "$GITHUB_WORKSPACE/ngrok" --version
       - name: Run watchdog
         env:
           COLAB_TOKEN_4B_B64: ${{ secrets.COLAB_TOKEN_4B_B64 }}

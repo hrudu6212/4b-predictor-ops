@@ -84,17 +84,23 @@ def reconnect(force=False, healthy_first=True):
         return 0
     print("WATCHDOG: tunnel DOWN -> rebuilding", flush=True)
     prepare_files()
+    colab_out("stop", "-s", "4bgpu", timeout=180)  # best-effort cleanup of stale
     made = None
-    for attempt in range(8):
-        rc, out = colab_out("new", "-s", "4bgpu", "--gpu", "T4", timeout=300)
-        tail = [l for l in out.splitlines() if l.strip()][-1:]
-        print(f"try {attempt}: {tail}", flush=True)
-        if "READY" in out:
-            made = True
+    plan = [(["--gpu", "T4"], 2, 30), ([], 4, 20)]  # GPU first, then CPU fallback
+    for extra, tries, pause in plan:
+        for attempt in range(tries):
+            rc, out = colab_out("new", "-s", "4bgpu", *extra, timeout=300)
+            tail = [l for l in out.splitlines() if l.strip()][-1:]
+            label = "T4" if extra else "CPU"
+            print(f"try {label} {attempt}: {tail}", flush=True)
+            if "READY" in out:
+                made = True
+                break
+            time.sleep(pause)
+        if made:
             break
-        time.sleep(90)
     if not made:
-        print("WATCHDOG: GPU unavailable, giving up this run", flush=True)
+        print("WATCHDOG: no runtime available, giving up this run", flush=True)
         return 2
     for f in ["mkdir_cpu.py", "deps.py"]:
         rc, out = colab_out("exec", "-s", "4bgpu", "-f", str(HERE / f),
@@ -113,7 +119,7 @@ def reconnect(force=False, healthy_first=True):
         ("keepalive_ep.txt", "/tmp/4b_data/keepalive_ep.txt"),
         (str(token_local), "/tmp/4b_data/token-4b.json"),
         ("best_4b_chart_model.pt", "/tmp/4b_data/out/best_4b_chart_model.pt"),
-    ]:
+    ] + ([("ngrok", "/tmp/4b_work/ngrok")] if (HERE / "ngrok").exists() else []):
         ok = False
         for tryup in range(3):
             src = Path(fn)

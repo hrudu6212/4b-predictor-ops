@@ -157,22 +157,40 @@ def main() -> None:
 
     # --- ngrok tunnel on the reserved domain --------------------------------
     try:
-        from pyngrok import ngrok
+        from pyngrok import conf, ngrok
     except ImportError:
         print("[4b] installing pyngrok ...", flush=True)
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyngrok"], check=True)
-        from pyngrok import ngrok  # type: ignore
+        from pyngrok import conf, ngrok  # type: ignore
 
-    ngrok.set_auth_token(token)
-    try:
-        ngrok.kill()
-    except Exception:
-        pass
+    # Prefer a pre-uploaded binary (avoids slow/flaky in-VM downloads).
+    ngrok_bin = os.environ.get("NGROK_BIN", "/tmp/4b_work/ngrok")
+    cfg = conf.PyngrokConfig(ngrok_path=ngrok_bin) if os.path.exists(ngrok_bin) else None
+    print(f"[4b] ngrok binary: {ngrok_bin} (exists={cfg is not None})", flush=True)
+
+    def _set_token():
+        if cfg is not None:
+            ngrok.set_auth_token(token, pyngrok_config=cfg)
+        else:
+            ngrok.set_auth_token(token)
+
+    def _kill():
+        try:
+            if cfg is not None:
+                ngrok.kill(pyngrok_config=cfg)
+            else:
+                ngrok.kill()
+        except Exception:
+            pass
+
+    _set_token()
+    _kill()
 
     def open_tunnel():
+        kw = {"pyngrok_config": cfg} if cfg is not None else {}
         if domain:
-            return ngrok.connect(port, proto="http", domain=domain)
-        return ngrok.connect(port, proto="http")
+            return ngrok.connect(port, proto="http", domain=domain, **kw)
+        return ngrok.connect(port, proto="http", **kw)
 
     try:
         tunnel = None
@@ -186,10 +204,7 @@ def main() -> None:
                 msg = str(exc)
                 print(f"[4b] tunnel open attempt {attempt} failed: {msg[:200]}", flush=True)
                 if "already online" in msg or "ERR_NGROK_334" in msg:
-                    try:
-                        ngrok.kill()
-                    except Exception:
-                        pass
+                    _kill()
                     time.sleep(15)
                     continue
                 raise
@@ -253,7 +268,7 @@ def main() -> None:
             except Exception as exc:
                 print(f"[ngrok] public check failed ({exc}); reconnecting ...", flush=True)
                 try:
-                    ngrok.kill()
+                    _kill()
                     t2 = open_tunnel()
                     print(f"[ngrok] reconnected: {t2.public_url}", flush=True)
                 except Exception as exc2:
@@ -268,10 +283,7 @@ def main() -> None:
     finally:
         stop.set()
         server.should_exit = True
-        try:
-            ngrok.kill()
-        except Exception:
-            pass
+        _kill()
 
 
 if __name__ == "__main__":

@@ -188,9 +188,20 @@ def main() -> None:
 
     def open_tunnel():
         kw = {"pyngrok_config": cfg} if cfg is not None else {}
-        if domain:
-            return ngrok.connect(port, proto="http", domain=domain, **kw)
-        return ngrok.connect(port, proto="http", **kw)
+        if not domain:
+            return ngrok.connect(port, proto="http", **kw)
+        last = None
+        for key in ("domain", "hostname"):
+            try:
+                return ngrok.connect(port, proto="http", **{key: domain}, **kw)
+            except Exception as exc:
+                last = exc
+                m = str(exc)
+                if "field domain not found" in m or "invalid endpoint configuration" in m:
+                    print(f"[4b] '{key}' rejected by agent; retrying with other key", flush=True)
+                    continue
+                raise
+        raise last
 
     try:
         tunnel = None

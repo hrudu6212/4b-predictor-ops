@@ -2,6 +2,9 @@ name: 4b-tunnel-watchdog
 
 on:
   schedule:
+    # Backstop only: scheduled runs in this private repo land every 4-5h, so the
+    # resident runner below hands over to its own successor instead of relying
+    # on this cron for the keepalive interval.
     - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
@@ -16,7 +19,10 @@ concurrency:
 jobs:
   watchdog:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,4 +46,5 @@ jobs:
           COLAB_SESSIONS_4B_B64: ${{ secrets.COLAB_SESSIONS_4B_B64 }}
           PREDICTION_ENV_4B_B64: ${{ secrets.PREDICTION_ENV_4B_B64 }}
           NGROK_TOKEN_4B: ${{ secrets.NGROK_TOKEN_4B }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
         run: python watchdog.py

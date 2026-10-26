@@ -3,3 +3,5 @@ ngrok_4b_token.txt
 keepalive_ep.txt
 token-4b.json
 ngrok
+sessions-4b.json
+sessions.json
